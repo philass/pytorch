@@ -25,6 +25,7 @@ constexpr auto kMkldnn = Layout::Mkldnn;
 constexpr auto kSparseCsc = Layout::SparseCsc;
 constexpr auto kSparseBsr = Layout::SparseBsr;
 constexpr auto kSparseBsc = Layout::SparseBsc;
+constexpr auto kDummyLayout = Layout::NumOptions;
 
 inline Layout layout_from_backend(Backend backend) {
   switch (backend) {
@@ -64,6 +65,8 @@ inline std::ostream& operator<<(std::ostream& stream, at::Layout layout) {
       return stream << "Mkldnn";
     case at::Layout::Unspecified:
       return stream << "Unspecified";
+    case at::kDummyLayout:
+      return stream << "DummyLayout";
     default:
       TORCH_CHECK(false, "Unknown layout");
   }
