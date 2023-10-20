@@ -885,35 +885,51 @@ def _squeeze_helper(g: jit_utils.GraphContext, input, axes_i):
 
 
 @_beartype.beartype
-def _reducesum_helper(
+def _reduce_helper(
     g: jit_utils.GraphContext,
+    type,
     input,
     axes_i=None,
     keepdims_i=1,
     noop_with_empty_axes_i=0,
 ):
+    reduction_types =
+    ["Mul",
+    "Max",
+    "Mea",
+    "Min",
+    "Prod",
+    "Sum",
+    "L1",
+    "L2",
+    "LogSum",
+    "LogSumExp",
+    "SumSquare"]
+    if type not in reduction_types:
+        raise errors.OnnxExporterError("Reduce{type} is not a valid ONNX Op")
+
     keepdims_i = _maybe_get_const(keepdims_i, "i")
-    if g.opset >= 13:
+    if (g.opset >= 13 and type == "Sum") or (g.opset >= 18):
         if axes_i:
             if not _is_value(axes_i):
                 axes_i = g.op(
                     "Constant", value_t=torch.tensor(axes_i, dtype=torch.long)
                 )
             return g.op(
-                "ReduceSum",
+                f"Reduce{type}",
                 input,
                 axes_i,
                 keepdims_i=keepdims_i,
                 noop_with_empty_axes_i=noop_with_empty_axes_i,
             )
         return g.op(
-            "ReduceSum",
+            f"Reduce{type}",
             input,
             keepdims_i=keepdims_i,
             noop_with_empty_axes_i=noop_with_empty_axes_i,
         )
     else:
-        return g.op("ReduceSum", input, axes_i=axes_i, keepdims_i=keepdims_i)
+        return g.op("Reduce{type}", input, axes_i=axes_i, keepdims_i=keepdims_i)
 
 
 @_beartype.beartype
