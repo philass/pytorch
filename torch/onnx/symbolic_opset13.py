@@ -65,7 +65,7 @@ def frobenius_norm(g: jit_utils.GraphContext, self, dim=None, keepdim=False):
     if not symbolic_helper._is_value(dim_val) and len(dim_val) == 0:
         return g.op("ReduceL2", self, keepdims_i=0)
     sqr = g.op("Mul", self, self)
-    sumsqr = symbolic_helper._reducesum_helper(g, sqr, dim, keepdims_i=keepdim)
+    sumsqr = symbolic_helper._reduce_helper(g, "Sum", sqr, dim, keepdims_i=keepdim)
     return g.op("Sqrt", sumsqr)
 
 
@@ -788,7 +788,7 @@ def diagonal(g: jit_utils.GraphContext, self, offset, dim1, dim2):
     #  [2.1, 2.2, 2.3],         [0, 1, 0]        [0, 2.2, 0],
     #  [3.1, 3.2, 3.3]]         [0, 0, 1]]       [0, 0, 3.3]]
     result = g.op("Mul", self, mask)
-    result = symbolic_helper._reducesum_helper(g, result, axes_i=[-1], keepdims_i=0)
+    result = symbolic_helper._reduce_helper(g, "Sum", result, axes_i=[-1], keepdims_i=0)
 
     # Calculate gather indices based on offset and dims
     # If offset is greater than zero, set offset to zero as this aids in

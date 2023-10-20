@@ -1536,7 +1536,7 @@ def softmax(g: jit_utils.GraphContext, input, dim, dtype=None):
     input = g.op("Sub", input, g.op("ReduceMax", input, axes_i=[dim], keepdims_i=1))
 
     exp = g.op("Exp", input)
-    sum = symbolic_helper._reducesum_helper(g, exp, axes_i=[dim])
+    sum = symbolic_helper._reduce_helper(g, "Sum", exp, axes_i=[dim])
     softmax = g.op("Div", exp, sum)
     if dtype and dtype.node().kind() != "prim::Constant":
         parsed_dtype = symbolic_helper._get_const(dtype, "i", "dtype")
@@ -3276,7 +3276,7 @@ def bucketize(
     # Sum to get the number of 1s corresponding to each element,
     # which is the same as the bucket index.
     # e.g., sum(4 > [1, 3, 4]) = sum([1, 1, 0]) = 2
-    return symbolic_helper._reducesum_helper(g, cond_out, axes_i=[0], keepdims_i=0)
+    return symbolic_helper._reduce_helper(g, "Sum", cond_out, axes_i=[0], keepdims_i=0)
 
 
 @_onnx_symbolic("aten::type_as")
@@ -3311,14 +3311,14 @@ def type_as(g: jit_utils.GraphContext, self, other):
 def cosine_similarity(g: jit_utils.GraphContext, x1, x2, dim, eps):
     if symbolic_helper.is_caffe2_aten_fallback():
         return g.at("cosine_similarity", x1, x2, dim_i=dim, eps_f=eps)
-    cross = symbolic_helper._reducesum_helper(
-        g, mul(g, x1, x2), axes_i=[dim], keepdims_i=0
+    cross = symbolic_helper._reduce_helper(
+        g, "Sum", mul(g, x1, x2), axes_i=[dim], keepdims_i=0
     )
-    x1_l2 = symbolic_helper._reducesum_helper(
-        g, mul(g, x1, x1), axes_i=[dim], keepdims_i=0
+    x1_l2 = symbolic_helper._reduce_helper(
+        g, "Sum", mul(g, x1, x1), axes_i=[dim], keepdims_i=0
     )
-    x2_l2 = symbolic_helper._reducesum_helper(
-        g, mul(g, x2, x2), axes_i=[dim], keepdims_i=0
+    x2_l2 = symbolic_helper._reduce_helper(
+        g, "Sum", mul(g, x2, x2), axes_i=[dim], keepdims_i=0
     )
     div_tens = max(
         g, sqrt(g, mul(g, x1_l2, x2_l2)), g.op("Constant", value_t=torch.tensor([eps]))
@@ -3336,8 +3336,8 @@ def pairwise_distance(g: jit_utils.GraphContext, input1, input2, p, eps, keepdim
         g.op("Constant", value_t=torch.tensor([1], dtype=torch.float)),
         add(g, p, eps),
     )
-    summation = symbolic_helper._reducesum_helper(
-        g,
+    summation = symbolic_helper._reduce_helper(
+        g"Sum", ,
         pow(g, sub(g, input1, input2), p),
         axes_i=[-1],
         keepdims_i=symbolic_helper._parse_arg(keepdim, "i"),
@@ -5422,8 +5422,8 @@ def _any(g: jit_utils.GraphContext, *args):
         dim = [symbolic_helper._parse_arg(dim, "i")]
         keepdim = symbolic_helper._parse_arg(keepdim, "i")
     input = g.op("Cast", input, to_i=_C_onnx.TensorProtoDataType.INT64)
-    input_sum = symbolic_helper._reducesum_helper(
-        g, input, axes_i=dim, keepdims_i=keepdim
+    input_sum = symbolic_helper._reduce_helper(
+        g, "Sum", input, axes_i=dim, keepdims_i=keepdim
     )
     return gt(g, input_sum, g.op("Constant", value_t=torch.tensor(0, dtype=torch.long)))
 
@@ -5576,7 +5576,7 @@ def gather(g: jit_utils.GraphContext, self, dim, index, sparse_grad=False):
         to_i=scalar_type.onnx_type(),
     )
     mul = g.op("Mul", symbolic_helper._unsqueeze_helper(g, self, [dim + 1]), index)
-    return symbolic_helper._reducesum_helper(g, mul, axes_i=[dim], keepdims_i=0)
+    return symbolic_helper._reduce_helper(g, "Sum", mul, axes_i=[dim], keepdims_i=0)
 
 
 @symbolic_helper.parse_args("v", "is", "i", "i")
@@ -6008,8 +6008,8 @@ def linalg_vector_norm(
         )
     else:
         ord_op = g.op("Constant", value_t=torch.tensor(ord, dtype=torch.float32))
-        result = symbolic_helper._reducesum_helper(
-            g, g.op("Pow", g.op("Abs", self), ord_op), axes_i=dim, keepdims_i=keepdim
+        result = symbolic_helper._reduce_helper(
+            g, "Sum", g.op("Pow", g.op("Abs", self), ord_op), axes_i=dim, keepdims_i=keepdim
         )
         result = g.op(
             "Pow",
@@ -6065,8 +6065,8 @@ def linalg_matrix_norm(
             dim[0], dim[1] = dim[1], dim[0]
         if dim[1] > dim[0] and not keepdim:
             dim[1] -= 1
-        sum = symbolic_helper._reducesum_helper(
-            g, g.op("Abs", self), axes_i=[dim[0]], keepdims_i=keepdim
+        sum = symbolic_helper._reduce_helper(
+            g, "Sum", g.op("Abs", self), axes_i=[dim[0]], keepdims_i=keepdim
         )
         if ord_value > 0:
             result, indices = max(
@@ -6097,7 +6097,7 @@ def linalg_cross(g: jit_utils.GraphContext, input, other, dim=-1):
 @_beartype.beartype
 def frobenius_norm(g: jit_utils.GraphContext, self, dim=None, keepdim=False):
     sqr = g.op("Mul", self, self)
-    sumsqr = symbolic_helper._reducesum_helper(g, sqr, axes_i=dim, keepdims_i=keepdim)
+    sumsqr = symbolic_helper._reduce_helper(g, "Sum", sqr, axes_i=dim, keepdims_i=keepdim)
     return g.op("Sqrt", sumsqr)
 
 
@@ -6404,7 +6404,7 @@ def kl_div(g: jit_utils.GraphContext, input, target, reduction, log_target):
     elif reduction == 1:
         return g.op("ReduceMean", output, keepdims_i=0)
     elif reduction == 2:
-        return symbolic_helper._reducesum_helper(g, output, keepdims_i=0)
+        return symbolic_helper._reduce_helper(g, "Sum", output, keepdims_i=0)
     else:
         return symbolic_helper._onnx_unsupported(
             "kl_div with reduction other than none, mean, or sum.", input
@@ -6421,7 +6421,7 @@ def mse_loss(g: jit_utils.GraphContext, input, target, reduction):
     elif reduction == 1:
         return g.op("ReduceMean", output, keepdims_i=0)
     elif reduction == 2:
-        return symbolic_helper._reducesum_helper(g, output, keepdims_i=0)
+        return symbolic_helper._reduce_helper(g, "Sum", output, keepdims_i=0)
     else:
         return symbolic_helper._onnx_unsupported(
             "mse_loss with reduction other than none, mean, or sum.", input

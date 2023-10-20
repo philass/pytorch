@@ -1296,8 +1296,8 @@ def linalg_vector_norm(
             cond_op,
             to_i=_type_utils.JitScalarType.from_value(self).onnx_type(),
         )
-        return symbolic_helper._reducesum_helper(
-            g, cond_op, axes_i=dim, keepdims_i=keepdim
+        return symbolic_helper._reduce_helper(
+            g, "Sum", cond_op, axes_i=dim, keepdims_i=keepdim
         )
     else:
         return opset9.linalg_vector_norm(g, self, ord, dim, keepdim, dtype)
@@ -1381,8 +1381,8 @@ def embedding_bag(
         )
         embeddings = loop_context.op("Mul", embeddings, per_sample_weights_row)
     if mode == 0:
-        embeddings = symbolic_helper._reducesum_helper(
-            loop_context, embeddings, axes_i=[0], keepdims_i=0
+        embeddings = symbolic_helper._reduce_helper(
+            loop_context, "Sum", embeddings, axes_i=[0], keepdims_i=0
         )
     elif mode == 1:
         embeddings = loop_context.op("ReduceMean", embeddings, axes_i=[0], keepdims_i=0)

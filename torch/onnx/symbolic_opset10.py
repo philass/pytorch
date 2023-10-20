@@ -563,8 +563,8 @@ def embedding_bag(
                 )
                 embeddings = g.op("Mul", embeddings, per_sample_weights_row)
             if mode == 0:
-                embeddings = symbolic_helper._reducesum_helper(
-                    g, embeddings, axes_i=[0], keepdims_i=0
+                embeddings = symbolic_helper._reduce_helper(
+                    g, "Sum", embeddings, axes_i=[0], keepdims_i=0
                 )
             elif mode == 1:
                 embeddings = g.op("ReduceMean", embeddings, axes_i=[0], keepdims_i=0)
