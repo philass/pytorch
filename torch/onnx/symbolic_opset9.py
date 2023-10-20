@@ -1533,7 +1533,7 @@ def softmax(g: jit_utils.GraphContext, input, dim, dtype=None):
         return softmax
 
     # Apply max normalization.
-    input = g.op("Sub", input, g.op("ReduceMax", input, axes_i=[dim], keepdims_i=1))
+    input = g.op("Sub", input, symbolic_helper._reduce_helper(g, "Max", input, axes_i=[dim], keepdims_i=1))
 
     exp = g.op("Exp", input)
     sum = symbolic_helper._reduce_helper(g, "Sum", exp, axes_i=[dim])
@@ -2942,7 +2942,7 @@ def native_layer_norm(
     two_cst = symbolic_helper._generate_wrapped_number(g, 2.0)
     eps_cst = symbolic_helper._generate_wrapped_number(g, eps)
 
-    mean = g.op("ReduceMean", input, axes_i=axes)
+    mean = symbolic_helper._reduce_helper(g, "Mean", input, axes_i=axes)
     numerator = sub(g, input, mean)
 
     # Cast it to eps dtype to avoid precision loss
@@ -2957,7 +2957,7 @@ def native_layer_norm(
         )
 
     # variance = e((x - e(x))^2), and (x - e(x)) is the numerator in the layer_norm formula
-    variance = g.op("ReduceMean", pow(g, numerator, two_cst), axes_i=axes)
+    variance = symbolic_helper._reduce_helper(g, "Mean", pow(g, numerator, two_cst), axes_i=axes)
     denominator = sqrt(g, g.op("Add", variance, eps_cst))
     normalized = g.op("Div", numerator, denominator)
 
@@ -3453,7 +3453,7 @@ def clamp_max(g: jit_utils.GraphContext, self, max):
 def max(g: jit_utils.GraphContext, self, dim_or_y=None, keepdim=None):
     # torch.max(input)
     if dim_or_y is None and keepdim is None:
-        return g.op("ReduceMax", self, keepdims_i=0)
+        return symbolic_helper._reduce_helper(g, "Max", self, keepdims_i=0)
     # torch.max(input, other)
     if keepdim is None:
         return _op_with_optional_float_cast(g, "Max", self, dim_or_y, opset_before=12)
@@ -3461,7 +3461,7 @@ def max(g: jit_utils.GraphContext, self, dim_or_y=None, keepdim=None):
     else:
         dim = symbolic_helper._get_const(dim_or_y, "i", "dim")
         keepdim = symbolic_helper._get_const(keepdim, "i", "keepdim")
-        max = g.op("ReduceMax", self, axes_i=[dim], keepdims_i=keepdim)
+        max = symbolic_helper._reduce_helper(g, "Max", self, axes_i=[dim], keepdims_i=keepdim)
         indices = g.op("ArgMax", self, axis_i=dim, keepdims_i=keepdim)
         return max, indices
 
@@ -3479,7 +3479,7 @@ def maximum(g: jit_utils.GraphContext, input, other):
 def min(g: jit_utils.GraphContext, self, dim_or_y=None, keepdim=None):
     # torch.min(input)
     if dim_or_y is None and keepdim is None:
-        return g.op("ReduceMin", self, keepdims_i=0)
+        return symbolic_helper._reduce_helper(g, "Min", self, keepdims_i=0)
     # torch.min(input, other)
     if keepdim is None:
         return _op_with_optional_float_cast(g, "Min", self, dim_or_y, opset_before=12)
@@ -3487,7 +3487,7 @@ def min(g: jit_utils.GraphContext, self, dim_or_y=None, keepdim=None):
     else:
         dim = symbolic_helper._get_const(dim_or_y, "i", "dim")
         keepdim = symbolic_helper._get_const(keepdim, "i", "keepdim")
-        min = g.op("ReduceMin", self, axes_i=[dim], keepdims_i=keepdim)
+        min = symbolic_helper._reduce_helper(g, "Min", self, axes_i=[dim], keepdims_i=keepdim)
         indices = g.op("ArgMin", self, axis_i=dim, keepdims_i=keepdim)
         return min, indices
 
@@ -3504,7 +3504,7 @@ def minimum(g: jit_utils.GraphContext, input, other):
 @symbolic_helper.parse_args("v", "is", "i")
 @_beartype.beartype
 def amax(g: jit_utils.GraphContext, self, dim, keepdim):
-    return g.op("ReduceMax", self, axes_i=dim, keepdims_i=keepdim)
+    return symbolic_helper._reduce_helper(g, "Max", self, axes_i=dim, keepdims_i=keepdim)
 
 
 @_onnx_symbolic("aten::amin")
@@ -3512,7 +3512,7 @@ def amax(g: jit_utils.GraphContext, self, dim, keepdim):
 @symbolic_helper.parse_args("v", "is", "i")
 @_beartype.beartype
 def amin(g: jit_utils.GraphContext, self, dim, keepdim):
-    return g.op("ReduceMin", self, axes_i=dim, keepdims_i=keepdim)
+    return symbolic_helper._reduce_helper(g, "Min", self, axes_i=dim, keepdims_i=keepdim)
 
 
 @_onnx_symbolic("aten::aminmax")
@@ -3525,7 +3525,7 @@ def aminmax(g: jit_utils.GraphContext, self, dim, keepdim):
         dim = symbolic_helper._get_const(dim, "i", "dim")
         reduce_kwargs["axes_i"] = [dim]
 
-    return g.op("ReduceMin", self, **reduce_kwargs), g.op(
+    return symbolic_helper._reduce_helper(g, "Min", self, **reduce_kwargs), g.op(
         "ReduceMax", self, **reduce_kwargs
     )
 
@@ -4284,7 +4284,7 @@ def sort(g: jit_utils.GraphContext, self, dim, decending, out=None):
 @_beartype.beartype
 def numel(g: jit_utils.GraphContext, self):
     shape = g.op("Shape", self)
-    return g.op("ReduceProd", shape, keepdims_i=0)
+    return symbolic_helper._reduce_helper(g, "Prod", shape, keepdims_i=0)
 
 
 @_onnx_symbolic("aten::topk")
@@ -5583,12 +5583,12 @@ def gather(g: jit_utils.GraphContext, self, dim, index, sparse_grad=False):
 @_beartype.beartype
 def _var_mean(g: jit_utils.GraphContext, input, dim, correction, keepdim):
     if dim is None:
-        mean = g.op("ReduceMean", input, keepdims_i=0)
+        mean = symbolic_helper._reduce_helper(g, "Mean", input, keepdims_i=0)
         t_mean = mean
         num_elements = numel(g, input)
     else:
-        mean = g.op("ReduceMean", input, axes_i=dim, keepdims_i=keepdim)
-        t_mean = g.op("ReduceMean", input, axes_i=dim, keepdims_i=1)
+        mean = symbolic_helper._reduce_helper(g, "Mean", input, axes_i=dim, keepdims_i=keepdim)
+        t_mean = symbolic_helper._reduce_helper(g, "Mean", input, axes_i=dim, keepdims_i=1)
         redudced_dims = g.op("Shape", input)
         # dim could contain one or multiple dimensions
         redudced_dims = g.op(
@@ -5597,11 +5597,11 @@ def _var_mean(g: jit_utils.GraphContext, input, dim, correction, keepdim):
             g.op("Constant", value_t=torch.tensor(dim)),
             axis_i=0,
         )
-        num_elements = g.op("ReduceProd", redudced_dims, keepdims_i=0)
+        num_elements = symbolic_helper._reduce_helper(g, "Prod", redudced_dims, keepdims_i=0)
     sub_v = g.op("Sub", input, t_mean)
     sqr_sub = g.op("Mul", sub_v, sub_v)
     keepdim_mean = 0 if dim is None else keepdim
-    var = g.op("ReduceMean", sqr_sub, axes_i=dim, keepdims_i=keepdim_mean)
+    var = symbolic_helper._reduce_helper(g, "Mean", sqr_sub, axes_i=dim, keepdims_i=keepdim_mean)
     # Correct bias in calculating variance, by dividing it over (N - correction) instead on N
     if correction is None:
         correction = 1
@@ -5654,7 +5654,7 @@ def std_mean(g: jit_utils.GraphContext, input, *args):
 @symbolic_helper.parse_args("v", "is", "i")
 @_beartype.beartype
 def logsumexp(g: jit_utils.GraphContext, input, dim, keepdim):
-    return g.op("ReduceLogSumExp", input, axes_i=dim, keepdims_i=keepdim)
+    return symbolic_helper._reduce_helper(g, "LogSumExp", input, axes_i=dim, keepdims_i=keepdim)
 
 
 @_onnx_symbolic("aten::arange")
@@ -5999,9 +5999,9 @@ def linalg_vector_norm(
         keepdim = False
 
     if ord == math.inf:
-        result = g.op("ReduceMax", g.op("Abs", self), axes_i=dim, keepdims_i=keepdim)
+        result = symbolic_helper._reduce_helper(g, "Max", g.op("Abs", self), axes_i=dim, keepdims_i=keepdim)
     elif ord == -math.inf:
-        result = g.op("ReduceMin", g.op("Abs", self), axes_i=dim, keepdims_i=keepdim)
+        result = symbolic_helper._reduce_helper(g, "Min", g.op("Abs", self), axes_i=dim, keepdims_i=keepdim)
     elif ord == 0:
         return symbolic_helper._onnx_opset_unsupported_detailed(
             "linalg_vector_norm", 9, 11, "ord=0 not supported", self
@@ -6402,7 +6402,7 @@ def kl_div(g: jit_utils.GraphContext, input, target, reduction, log_target):
     if reduction == 0:
         return output
     elif reduction == 1:
-        return g.op("ReduceMean", output, keepdims_i=0)
+        return symbolic_helper._reduce_helper(g, "Mean", output, keepdims_i=0)
     elif reduction == 2:
         return symbolic_helper._reduce_helper(g, "Sum", output, keepdims_i=0)
     else:
@@ -6419,7 +6419,7 @@ def mse_loss(g: jit_utils.GraphContext, input, target, reduction):
     if reduction == 0:
         return output
     elif reduction == 1:
-        return g.op("ReduceMean", output, keepdims_i=0)
+        return symbolic_helper._reduce_helper(g, "Mean", output, keepdims_i=0)
     elif reduction == 2:
         return symbolic_helper._reduce_helper(g, "Sum", output, keepdims_i=0)
     else:

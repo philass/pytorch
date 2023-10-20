@@ -567,9 +567,9 @@ def embedding_bag(
                     g, "Sum", embeddings, axes_i=[0], keepdims_i=0
                 )
             elif mode == 1:
-                embeddings = g.op("ReduceMean", embeddings, axes_i=[0], keepdims_i=0)
+                embeddings = symbolic_helper._reduce_helper(g, "Mean", embeddings, axes_i=[0], keepdims_i=0)
             else:
-                embeddings = g.op("ReduceMax", embeddings, axes_i=[0], keepdims_i=0)
+                embeddings = symbolic_helper._reduce_helper(g, "Max", embeddings, axes_i=[0], keepdims_i=0)
 
             embeddings = symbolic_helper._unsqueeze_helper(g, embeddings, [0])
             list_.append(embeddings)

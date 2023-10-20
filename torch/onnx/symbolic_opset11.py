@@ -1385,9 +1385,9 @@ def embedding_bag(
             loop_context, "Sum", embeddings, axes_i=[0], keepdims_i=0
         )
     elif mode == 1:
-        embeddings = loop_context.op("ReduceMean", embeddings, axes_i=[0], keepdims_i=0)
+        embeddings = symbolic_helper._reduce_helper(loop_context, "Mean", embeddings, axes_i=[0], keepdims_i=0)
     else:
-        embeddings = loop_context.op("ReduceMax", embeddings, axes_i=[0], keepdims_i=0)
+        embeddings = symbolic_helper._reduce_helper(loop_context, "Max", embeddings, axes_i=[0], keepdims_i=0)
 
     cond_out = loop_context.op(
         "Cast", loop_condition, to_i=_C_onnx.TensorProtoDataType.BOOL
